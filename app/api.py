@@ -2,13 +2,13 @@ from flask import request, jsonify, session,make_response,logging
 from functools import wraps
 import os
 from .db_config import get_user_data,get_all_user_details,get_db_connection
-from .user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,update_wallet_id,
+from .user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
                              upload_profile_picture,change_email,change_password,change_username,get_user_by_email)
 from dotenv import load_dotenv
 from .wallet_communications import get_transaction_status,get_btc_transaction_status
 import jwt
 from .db_setup import create_app
-from .handle_token import create_promo_code, update_spender_id, transfer_tanacoin,get_tanacoin_main_balance,get_tanacoin_main_balance,check_promocode_status
+from .handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
 from .self_utils import generate_promo_code
 import base64
 from .send_mail import send_password_reset_email,send_contact_email
@@ -53,18 +53,7 @@ def dashboard(current_user):
     if request.method == 'POST':
         action = request.json.get('action')  # Get action from JSON body
 
-        if action == 'add_wallet':
-            try:
-                wallet_address = request.json.get('wallet_address')  # Extract wallet address
-                if not wallet_address:
-                    return jsonify({'error': 'Wallet address is required.'}), 400  # Validation check
-
-                # Update wallet in the database
-                result = update_wallet_id(user_id, wallet_address)
-            except Exception as e:
-                return jsonify({'error': f'An error occurred while adding wallet: {str(e)}'}), 500
-
-        elif action == 'transfer':
+        if action == 'transfer':
             try:
                 recipient_tnc_wallet_id = request.json.get('recipient_tnc_wallet_id')
                 amount = float(request.json.get('amount'))
