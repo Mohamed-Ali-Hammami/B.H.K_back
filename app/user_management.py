@@ -1,14 +1,14 @@
 from typing import Dict, Optional, Union, Tuple, List, Any
 from werkzeug.security import generate_password_hash, check_password_hash
-from .db_setup import get_db_connection
-from .self_utils import generate_token
+from db_setup import get_db_connection
+from self_utils import generate_token
 import pymysql
 import logging
 import os
 import uuid
 import re
 from dotenv import load_dotenv
-from .kyc_handler import KYCService
+from kyc_handler import KYCService
 from datetime import datetime
 from decimal import Decimal
 
@@ -32,7 +32,7 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
         required_fields = [
             "first_name", "last_name", "date_of_birth", "email", "phone_number",
-            "country", "address_line1", "city", "postal_code", "username", "password"
+            "country", "address_line1", "city", "postal_code", "password"
         ]
         
         if not all(data.get(field) for field in required_fields):
@@ -51,7 +51,6 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         city = data["city"]
         state = data.get("state", "")
         postal_code = data["postal_code"]
-        username = data["username"]
         password_hash = generate_password_hash(data["password"])
         tnc_wallet_id = str(uuid.uuid4())
 
@@ -62,11 +61,10 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             return {"message": "Invalid date of birth format. Use YYYY-MM-DD."}, 400
 
         connection = get_db_connection()
-        kyc_service = KYCService(connection)
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
             args = (
-                first_name, last_name, username, email, password_hash,
-                default_picture, wallet_id, tnc_wallet_id, date_of_birth, phone_number, country,
+                first_name, last_name, email, password_hash,
+                default_picture, tnc_wallet_id, date_of_birth, phone_number, country,
                 address_line1, address_line2, city, state, postal_code
             )
             logging.debug(f"Calling RegisterUser with args: {args}")
@@ -87,7 +85,6 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
             user_dict = {
                 "user_id": user_id,
-                "username": username,
                 "email": email,
                 "first_name": first_name,
                 "last_name": last_name,
@@ -110,9 +107,7 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         error_message = str(e)
         logging.error(f"MySQL Error: {error_message}")
         if e.args[0] == 1062:
-            if "username" in error_message:
-                return {"message": "Username is already taken."}, 400
-            elif "email" in error_message:
+            if "email" in error_message:
                 return {"message": "Email is already registered."}, 400
             else:
                 return {"message": "Duplicate entry error."}, 400
@@ -129,24 +124,23 @@ def register_user(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
 
 
 def check_credentials(identifier: str, password: str) -> Optional[Dict[str, Any]]:
-    """Check if the provided credentials (username/email and password) are valid."""
+    """Check if the provided credentials (email and password) are valid."""
     connection = None
     try:
         connection = get_db_connection()
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
             cursor.execute("""
-                SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.password_hash,
+                SELECT u.id, u.email, u.first_name, u.last_name, u.password_hash,
                        COALESCE(p.id_verified, FALSE) as id_verified,
                        COALESCE(u.is_superuser, 0) as is_superuser
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-                WHERE u.username = %s OR u.email = %s
-            """, (identifier, identifier))
+                WHERE u.email = %s
+            """, (identifier))
             user = cursor.fetchone()
             if user and check_password_hash(user["password_hash"], password):
                 return {
                     "user_id": user["id"],
-                    "username": user["username"],
                     "email": user["email"],
                     "first_name": user["first_name"],
                     "last_name": user["last_name"],
@@ -163,12 +157,12 @@ def check_credentials(identifier: str, password: str) -> Optional[Dict[str, Any]
             connection.close()
 
 def login_user(**kwargs) -> Tuple[Dict[str, Any], int]:
-    """Handle user login with email/username and password."""
+    """Handle user login with email and password."""
     try:
         identifier = kwargs.get("identifier")
         password = kwargs.get("password")
         if not (identifier and password):
-            return {"message": "Username/Email and password are required."}, 400
+            return {"message": "Email and password are required."}, 400
             
         user = check_credentials(identifier, password)
         if not user:
@@ -262,31 +256,6 @@ def upload_profile_picture(user_id: int, file: bytes) -> Tuple[bool, str]:
     finally:
         if connection:
             connection.close()
-
-def change_username(user_id: int, new_username: str) -> Union[str, bool]:
-    """Change a user's username if it is not already taken."""
-    connection = None
-    try:
-        connection = get_db_connection()
-        with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-            cursor.callproc('get_user_by_ID', (user_id,))
-            user_info = cursor.fetchone()
-            if not user_info:
-                return "User not found."
-            cursor.execute("SELECT username FROM users WHERE username = %s AND id != %s", (new_username, user_id))
-            if cursor.fetchone():
-                return f"Username '{new_username}' already exists."
-            cursor.callproc('UpdateUsername', (user_id, new_username))
-            connection.commit()
-            return True
-    except Exception as e:
-        if connection:
-            connection.rollback()
-        return f"Error updating username: {str(e)}"
-    finally:
-        if connection:
-            connection.close()
-
 def is_valid_email(email: str) -> bool:
     """Validate email format using a regex pattern."""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'

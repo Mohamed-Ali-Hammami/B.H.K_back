@@ -1,4 +1,4 @@
-from .db_setup import get_db_connection
+from db_setup import get_db_connection
 from pymysql import MySQLError
 from datetime import datetime
 

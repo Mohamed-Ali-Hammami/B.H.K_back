@@ -1,9 +1,8 @@
-from .db_config import get_user_details_by_wallet_id
 from web3 import Web3
-from .db_setup import get_db_connection
+from db_setup import get_db_connection
 from dotenv import load_dotenv
 import os
-from .handle_token import get_tanacoin_rate
+from handle_token import get_tanacoin_rate
 import requests
 from decimal import Decimal  # Importing Decimal for accurate fixed-point arithmetic
 
@@ -250,55 +249,3 @@ def validate_transaction(tx_hash,value ,currency, tanacoin_purchased: Decimal, s
     except Exception as e:
         print(f"Error in validate_transaction: {str(e)}")
         return {"status": "error", "message": f"Error in validation: {str(e)}"}
-
-def store_transaction_in_db(tx_hash, value, currency, sender_address, tanacoin_purchased):
-    connection = None
-    try:
-        print("Starting to retrieve user details...")  # Added print statement
-        userdetails = get_user_details_by_wallet_id(sender_address)  
-        
-        if userdetails:  # Check if the result is not empty
-            user_id = userdetails[0].get("id")  # Access the first dictionary in the list
-            print(f"User ID: {user_id}")  # Print the user ID
-        else:
-            print("No user details found.")
-            return False, "No user found with provided wallet ID."
-        
-        crypto_precision = 18
-
-        connection = get_db_connection()
-
-        with connection.cursor() as cursor:
-            # Prepare the stored procedure call
-            stored_procedure = """
-                CALL purchase_and_update_tanacoin(
-                    %s, %s, %s, %s, %s, %s
-                );
-            """
-
-            # Execute the stored procedure with the provided parameters
-            cursor.execute(stored_procedure, (user_id, value, currency, crypto_precision, tx_hash, tanacoin_purchased))
-            
-            # Commit the transaction (important for changes to take effect)
-            connection.commit()
-
-            # Fetch the result message from the SELECT statement at the end of the stored procedure
-            result = cursor.fetchone()
-            print(result['message'])  # Print success message from the procedure
-            
-            # Optionally, check if there are specific return values or conditions:
-            if result:
-                print("Stored procedure executed successfully.")
-            else:
-                print("Stored procedure did not return any result.")
-        
-        print("Transaction stored successfully in the database.")  # Added print statement
-        return True, "Transaction stored successfully"
-    
-    except Exception as e:
-        print(f"Error occurred during transaction storage: {e}")  # More descriptive error print
-        return False, str(e)
-    
-    finally:
-        if connection:
-            connection.close()

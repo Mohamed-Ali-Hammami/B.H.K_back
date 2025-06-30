@@ -1,18 +1,18 @@
 from flask import request, jsonify, session,make_response,logging
 from functools import wraps
 import os
-from .db_config import get_user_data,get_all_user_details,get_db_connection
-from .user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
-                             upload_profile_picture,change_email,change_password,change_username,get_user_by_email)
+from db_config import get_user_data,get_all_user_details,get_db_connection
+from user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
+                             upload_profile_picture,change_email,change_password,get_user_by_email)
 from dotenv import load_dotenv
-from .wallet_communications import get_transaction_status,get_btc_transaction_status
+from wallet_communications import get_transaction_status,get_btc_transaction_status
 import jwt
-from .db_setup import create_app
-from .handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
-from .self_utils import generate_promo_code
+from db_setup import create_app
+from handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
+from self_utils import generate_promo_code
 import base64
-from .send_mail import send_password_reset_email,send_contact_email
-from .kyc_handler import KYCService
+from send_mail import send_password_reset_email,send_contact_email
+from kyc_handler import KYCService
 import asyncio
 load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY')
@@ -134,20 +134,6 @@ def dashboard_data(current_user):
                     errors.append("Failed to upload profile picture.")
             except Exception as e:
                 errors.append(f"Invalid profile picture format: {str(e)}")
-
-        # Process username update
-        new_username = data.get('username')
-        
-        if new_username:
-            # Ensure username is valid (e.g., not empty or too short)
-            if len(new_username) < 3:
-                errors.append("Username must be at least 3 characters long.")
-            else:
-                result = change_username(user_id, new_username)
-                if result:
-                    changes_made = True
-                else:
-                    errors.append("Failed to update username.")
 
         # Process email update
         new_email = data.get('email')
@@ -318,7 +304,6 @@ def superuser_dashboard(current_user):
                     "user_id": user['user_id'],
                     "first_name": user['first_name'],
                     "last_name": user['last_name'],
-                    "username": user['username'],
                     "email": user['email'],
                     "profile_picture": profile_picture_base64,  # Base64 encoded image
                     "user_created_at": user['user_created_at'],
@@ -391,7 +376,7 @@ def login():
     data = request.json
     identifier = data.get('identifier')
     password = data.get('password')
-    # Validate user credentials (username/password login)
+    # Validate user credentials (email/password login)
     result, status_code = login_user(wallet_connect=False, identifier=identifier, password=password)
 
     if status_code == 200:

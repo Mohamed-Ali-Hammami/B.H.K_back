@@ -1,5 +1,5 @@
 import pymysql.cursors
-from .db_setup import get_db_connection
+from db_setup import get_db_connection
 import logging
 import base64
 import pymysql
@@ -9,33 +9,6 @@ def encode_base64(data):
     if isinstance(data, bytes):
         return base64.b64encode(data).decode('utf-8')
     return data
-
-def check_wallet_link(wallet_address):
-    connection = get_db_connection()
-    if connection is None:
-        logging.error("Failed to establish database connection.")
-        return None
-    
-    try:
-        with connection.cursor() as cursor:
-            query = '''
-            SELECT user_id
-            FROM users
-            WHERE wallet_id = %s
-            '''
-            cursor.execute(query, (wallet_address,))
-            result = cursor.fetchone()
-            if result:
-                return {
-                    'user_id': result['user_id'],
-                }
-            return None
-    except Exception as e:
-        logging.error(f"Error checking wallet link: {e}")
-        return None
-    finally:
-        connection.close()
-
 def get_superuser_details(identifier):
     logging.info(f"Fetching superuser details for identifier: {identifier}")
     
@@ -43,11 +16,11 @@ def get_superuser_details(identifier):
     try:
         with connection.cursor() as cursor:
             query = '''
-            SELECT superuser_id, username, email, password_hash
+            SELECT superuser_id, email, password_hash
             FROM superusers 
-            WHERE superuser_id = %s OR username = %s OR email = %s
+            WHERE superuser_id = %s OR email = %s
             '''
-            cursor.execute(query, (identifier, identifier, identifier))
+            cursor.execute(query, (identifier, identifier))
             superuser = cursor.fetchone()
             if superuser:
                 logging.info(f"Superuser found: {superuser}")
@@ -70,7 +43,6 @@ def get_user_data(user_id):
             # Call the stored procedure 'get_user_data' with the provided user_id
             cursor.callproc('get_user_data', [user_id])
             user_data = []
-            wallet_data = []
             transactions = []
             payments = []
             # Fetch all the results from the stored procedure
@@ -87,18 +59,10 @@ def get_user_data(user_id):
                     'user_id': result['user_id'],
                     'first_name': result['first_name'],
                     'last_name': result['last_name'],
-                    'username': result['username'],
                     'email': result['email'],
                     'profile_picture': profile_picture,
                     'tnc_wallet_id': result['user_tnc_wallet_id'],
                     'created_at': result['created_at']
-                })
-
-                # Collect wallet data
-                wallet_data.append({
-                    'tnc_wallet_id': result['wallet_id'],
-                    'balance': result['balance'],
-                    'wallet_created_at': result['wallet_created_at']
                 })
 
                 # Collect transaction data
@@ -128,7 +92,6 @@ def get_user_data(user_id):
             # Return the formatted data in a dictionary
             return {
                 'user_data': user_data,
-                'wallet_data': wallet_data,
                 'transactions': transactions,
                 'payments': payments
             }
@@ -177,10 +140,8 @@ def get_all_user_details():
                             'user_id': row['user_id'],
                             'first_name': row['first_name'],
                             'last_name': row['last_name'],
-                            'username': row['username'],
                             'email': row['email'],
                             'profile_picture': row['profile_picture'],  # Added profile_picture here
-                            'wallet_id': row['wallet_id'],
                             'user_tnc_wallet_id': row['user_tnc_wallet_id'],
                             'user_created_at': row['user_created_at'],
 
@@ -245,26 +206,3 @@ def get_all_user_details():
         # Ensure the connection is closed
         connection.close()
 
-
-def get_user_details_by_wallet_id(wallet_id):
-    # Establishing a connection to the database
-    connection =get_db_connection()
-    try:
-        with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-            # Calling the stored procedure with the provided wallet_id
-            cursor.callproc('GetUserDetailsByWalletId', (wallet_id,))
-            result = cursor.fetchall()
-            # If result is empty, return a message indicating no data found
-            if not result:
-                print("No user found with the provided wallet ID.")
-                return None
-            # Return the fetched user details
-            return result
-
-    except Exception as e:
-        print(f"Error occurred: {e}")
-        return None
-
-    finally:
-        # Closing the connection
-        connection.close()

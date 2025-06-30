@@ -1,4 +1,4 @@
-from .db_setup import get_db_connection
+from db_setup import get_db_connection
 import pymysql
 import logging
 import os

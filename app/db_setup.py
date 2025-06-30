@@ -25,12 +25,12 @@ def get_db_connection():
         logger.info("Attempting to connect to the database...")
 
         connection = pymysql.connect(
-            host=os.getenv('DB_HOST'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            db=os.getenv('DB_NAME'),
+            host=os.getenv('DB_HOST_HOST'),
+            user=os.getenv('DB_USER_HOST'),
+            password=os.getenv('DB_PASSWORD_HOST'),
+            db=os.getenv('DB_NAME_HOST'),
             charset='utf8mb4',
-            port=int(os.getenv('DB_PORT')),
+            port=int(os.getenv('DB_PORT_HOST')),
             cursorclass=DictCursor,
             connect_timeout=10  # Set a connection timeout (in seconds)
         )
