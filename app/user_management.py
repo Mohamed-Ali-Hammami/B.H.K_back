@@ -1,14 +1,13 @@
 from typing import Dict, Optional, Union, Tuple, List, Any
 from werkzeug.security import generate_password_hash, check_password_hash
-from db_setup import get_db_connection
-from self_utils import generate_token
+from .db_setup import get_db_connection
+from .self_utils import generate_token
 import pymysql
 import logging
 import os
 import uuid
 import re
 from dotenv import load_dotenv
-from kyc_handler import KYCService
 from datetime import datetime
 from decimal import Decimal
 

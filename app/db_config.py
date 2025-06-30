@@ -1,5 +1,5 @@
 import pymysql.cursors
-from db_setup import get_db_connection
+from .db_setup import get_db_connection
 import logging
 import base64
 import pymysql

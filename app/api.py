@@ -1,18 +1,18 @@
 from flask import request, jsonify, session,make_response,logging
 from functools import wraps
 import os
-from db_config import get_user_data,get_all_user_details,get_db_connection
-from user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
+from .db_config import get_user_data,get_all_user_details,get_db_connection
+from .user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
                              upload_profile_picture,change_email,change_password,get_user_by_email)
 from dotenv import load_dotenv
-from wallet_communications import get_transaction_status,get_btc_transaction_status
+from .wallet_communications import get_transaction_status,get_btc_transaction_status
 import jwt
-from db_setup import create_app
-from handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
-from self_utils import generate_promo_code
+from .db_setup import create_app
+from .handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
+from .self_utils import generate_promo_code
 import base64
-from send_mail import send_password_reset_email,send_contact_email
-from kyc_handler import KYCService
+from .send_mail import send_password_reset_email,send_contact_email
+from .kyc_handler import KYCService
 import asyncio
 load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY')
