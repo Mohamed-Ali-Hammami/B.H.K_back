@@ -101,30 +101,48 @@ class KYCService:
             return False, f"Database error: {str(e)}"
 
     async def get_kyc_status(self, user_id):
-        """Get KYC verification status for a user"""
+        """Get the current KYC status for a user"""
         try:
             with self.db.cursor(pymysql.cursors.DictCursor) as cursor:
-                # Get all KYC documents
                 cursor.execute('''
-                    SELECT document_type, status, rejection_reason, updated_at
+                    SELECT document_type, status, created_at, updated_at
                     FROM kyc_documents 
                     WHERE user_id = %s
-                    ORDER BY updated_at DESC
                 ''', (user_id,))
-                
                 documents = cursor.fetchall()
                 
-                # Determine overall KYC status
-                status = 'not_started'
-                if documents:
-                    if all(doc['status'] == 'approved' for doc in documents):
-                        status = 'approved'
-                    elif any(doc['status'] == 'rejected' for doc in documents):
-                        status = 'rejected'
-                    elif any(doc['status'] == 'pending' for doc in documents):
-                        status = 'pending'
-                    else:
-                        status = 'in_progress'
+                if not documents:
+                    # Check for temporary documents if no regular documents found
+                    cursor.execute('''
+                        SELECT document_type, status, created_at, updated_at
+                        FROM temp_kyc_documents 
+                        WHERE temp_user_id = %s
+                    ''', (f"temp_{user_id}",))
+                    temp_documents = cursor.fetchall()
+                    
+                    if temp_documents:
+                        return {
+                            'status': 'in_progress',
+                            'message': 'Documents uploaded but not yet linked to your account',
+                            'documents': temp_documents
+                        }
+                    
+                    return {
+                        'status': 'not_started',
+                        'message': 'No KYC documents submitted',
+                        'documents': []
+                    }
+                
+                # Determine overall status
+                statuses = [doc['status'] for doc in documents]
+                if 'rejected' in statuses:
+                    status = 'rejected'
+                elif 'pending' in statuses:
+                    status = 'pending'
+                elif all(s == 'approved' for s in statuses):
+                    status = 'approved'
+                else:
+                    status = 'in_progress'
                 
                 return {
                     'status': status,
@@ -134,6 +152,44 @@ class KYCService:
         except Exception as e:
             logging.error(f"Error in get_kyc_status: {str(e)}")
             return {'error': str(e)}
+
+    async def link_temp_documents(self, temp_user_id, new_user_id):
+        """Link temporary KYC documents to a new user ID after registration"""
+        try:
+            with self.db.cursor() as cursor:
+                # Move files from temp to user directory
+                temp_dir = os.path.join(self.upload_folder, 'temp')
+                user_dir = os.path.join(self.upload_folder, str(new_user_id))
+                os.makedirs(user_dir, exist_ok=True)
+                
+                # Move all files from temp to user directory
+                for filename in os.listdir(temp_dir):
+                    if filename.startswith(temp_user_id + '_'):
+                        old_path = os.path.join(temp_dir, filename)
+                        new_filename = filename.replace(temp_user_id + '_', '')
+                        new_path = os.path.join(user_dir, new_filename)
+                        os.rename(old_path, new_path)
+                
+                # Update database records
+                cursor.execute('''
+                    UPDATE kyc_documents 
+                    SET user_id = %s, updated_at = NOW()
+                    WHERE user_id = %s
+                ''', (new_user_id, temp_user_id))
+                
+                # Clean up temp records
+                cursor.execute('''
+                    DELETE FROM temp_kyc_documents 
+                    WHERE temp_user_id = %s
+                ''', (temp_user_id,))
+                
+                self.db.commit()
+                return True, "KYC documents successfully linked to your account"
+                
+        except Exception as e:
+            self.db.rollback()
+            logging.error(f"Error in link_temp_documents: {str(e)}")
+            return False, f"Failed to link KYC documents: {str(e)}"
 
     async def verify_document(self, user_id, document_type, status, verified_by, rejection_reason=None):
         """Admin function to verify a document"""

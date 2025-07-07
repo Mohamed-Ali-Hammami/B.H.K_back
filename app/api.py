@@ -5,7 +5,6 @@ from .db_config import get_user_data,get_all_user_details,get_db_connection
 from .user_management import (add_bonus_to_creator,get_promo_codes_by_creator,register_user, login_user,
                              upload_profile_picture,change_email,change_password,get_user_by_email)
 from dotenv import load_dotenv
-from .wallet_communications import get_transaction_status,get_btc_transaction_status
 import jwt
 from .db_setup import create_app
 from .handle_token import create_promo_code, update_spender_id, transfer_tanacoin,check_promocode_status
@@ -232,11 +231,11 @@ def transaction_status(current_user):
     try:
         result = None
         if payment_method == 'ETH':
-            result = get_transaction_status(tx_hash, added_percentage)
+            result = None
         elif payment_method == 'BTC':
-            result = get_btc_transaction_status(tx_hash, added_percentage)
+            result = None
         elif payment_method == 'USDT':
-            result = get_transaction_status(tx_hash, added_percentage)
+            result = None
         else:
             return jsonify({"status": "error", "message": "Unsupported payment method"}), 400
 
@@ -266,6 +265,57 @@ def signup():
         return jsonify(response), 201
     else:
         return jsonify({'message': response.get('message', 'An error occurred during registration.')}), status_code
+
+@app.route('/api/kyc/status', methods=['GET'])
+def kyc_status():
+    """Get KYC verification status for a user
+    
+    This endpoint checks both regular KYC documents and temporary KYC documents
+    if the user has just registered and their documents are still being processed.
+    """
+    try:
+        user_id = request.args.get('user_id')
+        temp_user_id = request.args.get('temp_user_id')
+        
+        if not user_id and not temp_user_id:
+            return jsonify({
+                'status': 'not_started',
+                'message': 'User ID or temporary user ID is required',
+                'documents': []
+            }), 400
+            
+        connection = get_db_connection()
+        kyc_service = KYCService(connection)
+        
+        # First check regular KYC status
+        if user_id:
+            result = asyncio.run(kyc_service.get_kyc_status(user_id))
+            if 'error' in result:
+                return jsonify({"message": result['error']}), 500
+                
+            # If no documents found but we have a temp_user_id, check temp documents
+            if result.get('status') == 'not_started' and temp_user_id:
+                temp_result = asyncio.run(kyc_service.get_kyc_status(temp_user_id))
+                if 'error' not in temp_result and temp_result.get('documents'):
+                    result = {
+                        'status': 'in_progress',
+                        'message': 'Documents uploaded but not yet linked to your account',
+                        'documents': temp_result['documents']
+                    }
+        else:
+            # Only temp_user_id provided
+            result = asyncio.run(kyc_service.get_kyc_status(temp_user_id))
+            if 'error' in result:
+                return jsonify({"message": result['error']}), 500
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logging.error(f"Error in kyc_status endpoint: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+    finally:
+        if 'connection' in locals() and connection:
+            connection.close()
 @app.route('/kyc/upload', methods=['POST'])
 def upload_kyc():
     user_id = request.form.get('user_id')
@@ -275,9 +325,32 @@ def upload_kyc():
         return jsonify({"message": "Missing required fields."}), 400
     connection = get_db_connection()
     kyc_service = KYCService(connection)
+    print(kyc_service)
     success, message = asyncio.run(kyc_service.upload_kyc_document(user_id, document_type, file))
+    print(success ,message)
     connection.close()
     return jsonify({"success": success, "message": message}), 200 if success else 400
+
+@app.route('/api/kyc/link-documents', methods=['POST'])
+def link_kyc_documents():
+    """Link temporary KYC documents to a new user ID after registration"""
+    data = request.get_json()
+    temp_user_id = data.get('temp_user_id')
+    new_user_id = data.get('new_user_id')
+    
+    if not temp_user_id or not new_user_id:
+        return jsonify({"success": False, "message": "Both temp_user_id and new_user_id are required"}), 400
+    
+    connection = get_db_connection()
+    try:
+        kyc_service = KYCService(connection)
+        success, message = asyncio.run(kyc_service.link_temp_documents(temp_user_id, new_user_id))
+        return jsonify({"success": success, "message": message}), 200 if success else 400
+    except Exception as e:
+        logging.error(f"Error linking KYC documents: {str(e)}")
+        return jsonify({"success": False, "message": f"Failed to link KYC documents: {str(e)}"}), 500
+    finally:
+        connection.close()
 
 @app.route('/api/superuser-dashboard', methods=['GET', 'PUT'])
 @token_required
@@ -458,5 +531,3 @@ def contact_us():
         return jsonify({"message": "Failed to send your message. Please try again later."}), 500
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)
-
-
